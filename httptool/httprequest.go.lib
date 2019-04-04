@@ -1,0 +1,175 @@
+package httptool
+
+import (
+	"bufio"
+	"fmt"
+	"strings"
+	mt "utils/common"
+)
+
+var (
+	methods            []string
+	TAG_GET            = "GET"
+	TAG_POST           = "POST"
+	TAG_CONNECTION     = "Connection"
+	TAG_CONTENT_LENGTH = "Content-Length"
+	TAG_KEEP_ALIVE     = "keep-alive"
+	TAG_HOST           = "Host"
+	TAG_CACHE_CONTROL  = "Cache-Control"
+)
+
+type badStringError struct {
+	what string
+	str  string
+}
+
+func (e *badStringError) Error() string { return fmt.Sprintf("%s %q", e.what, e.str) }
+
+type HTTPRequest struct {
+	Host        string
+	Head        map[string]string
+	Method      string
+	URI         string
+	RequestURI  string
+	Proto       string
+	KeepAlive   bool
+	ProtoMajor  int
+	ProtoMinor  int
+	QueryString string
+	PostData    []byte
+	Cache       string
+}
+
+//NewHTTPRequest 创建一个新的Request
+func NewHTTPRequest(reader *bufio.Reader) (req *HTTPRequest, err error) {
+	if methods == nil || len(methods) == 0 {
+		methods = append([]string{TAG_GET, TAG_POST})
+	}
+	req = new(HTTPRequest)
+	linebuf, _, err := reader.ReadLine()
+	if err != nil {
+		//接收数据出现异常
+		return nil, err
+	}
+	//获取到首行信息
+	line := string(linebuf)
+	//判断首行
+	var ok bool
+	req.Method, req.RequestURI, req.Proto, ok = parseFirstLine(line)
+	if !ok {
+		return nil, &badStringError{"malformed HTTP request", line}
+	}
+	//检核请求方式
+	req.QueryString = ""
+	req.URI = req.RequestURI
+	i := mt.IndexOfString(methods, req.Method)
+	if i < 0 {
+		return nil, &badStringError{"HTTP Method error", req.Method}
+	}
+	req.Head = make(map[string]string)
+	req.parseHead(reader)
+	if req.Method == TAG_GET {
+		//GET 方式需要区分uri和参数
+		i = strings.Index(req.RequestURI, "?")
+		if i > 0 {
+			//有参数
+			req.URI = req.RequestURI[0:i]
+			req.QueryString = req.RequestURI[i+1:]
+		}
+	} else if req.Method == TAG_POST {
+		req.parsePostData(reader)
+	} else {
+		return nil, &badStringError{"HTTP Method error", line}
+	}
+	req.check()
+	return req, nil
+}
+
+//解析第一行
+func parseFirstLine(line string) (method, requestURI, proto string, ok bool) {
+	s1 := strings.Index(line, " ")
+	s2 := strings.Index(line[s1+1:], " ")
+	if s1 < 0 || s2 < 0 {
+		return
+	}
+	s2 += s1 + 1
+	return line[:s1], line[s1+1 : s2], line[s2+1:], true
+}
+
+//解析第一行
+func (req *HTTPRequest) parseFirstLine(line string) (string, string, string, bool) {
+	s1 := strings.Index(line, " ")
+	s2 := strings.Index(line[s1+1:], " ")
+	if s1 < 0 || s2 < 0 {
+		return "", "", "", false
+	}
+	s2 += s1 + 1
+	return line[:s1], line[s1+1 : s2], line[s2+1:], true
+}
+
+func (req *HTTPRequest) parseHead(reader *bufio.Reader) error {
+	for {
+		linebuf, _, err := reader.ReadLine()
+		if err != nil {
+			return err
+		}
+		line := string(linebuf)
+		if len(line) == 0 {
+			//读取头完毕
+			break
+		}
+		i := strings.Index(line, ":")
+		if i < 0 {
+			continue
+		}
+		k := line[0:i]
+		v := line[i+1:]
+		req.addHead(k, v)
+	}
+	return nil
+}
+func (req *HTTPRequest) addHead(k, v string) {
+	k = strings.Trim(k, " ")
+	v = strings.Trim(v, " ")
+	req.Head[k] = v
+}
+
+func (req *HTTPRequest) parsePostData(reader *bufio.Reader) error {
+	if req.Method != TAG_POST {
+		return nil
+	}
+	i := reader.Buffered()
+	rd := bufio.NewReaderSize(reader, i)
+	l := req.Head[TAG_CONTENT_LENGTH]
+	if len(l) == 0 {
+		return nil
+	}
+	length := mt.ToUInt32(l)
+	if length == 0 {
+		return nil
+	}
+	var data []byte
+	data = make([]byte, length)
+	i, err := rd.Read(data)
+	if err != nil {
+		return nil
+	}
+	req.PostData = data[0:i]
+	req.QueryString = string(req.PostData)
+	return nil
+}
+func (req *HTTPRequest) check() {
+	//
+	keepalive := req.Head[TAG_CONNECTION]
+	if len(keepalive) > 0 {
+		req.KeepAlive = strings.Compare(keepalive, TAG_KEEP_ALIVE) == 0
+	}
+	host := req.Head[TAG_HOST]
+	if len(host) > 0 {
+		req.Host = host
+	}
+	cache := req.Head[TAG_CACHE_CONTROL]
+	if len(cache) > 0 {
+		req.Cache = cache
+	}
+}

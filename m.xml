@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	SSSetting 配置信息
+		Version 文件版本
+	SSHTTP HTTP配置
+		Address:监听地址
+		Active:是否启用
+	SSCapture
+		数据采集器 AddressL采集地址  
+		DataInputType:数据采集方式 单播=1,组播=2,TCP=3,HTTP=4
+		Print:是否启用打印
+		SSAdapter:分发适配器
+			AdapterType:适配器类型  单播=1,组播=2,TCP=3,HTTP=4
+			Address:地址
+-->
+<SSSetting Version="123456">
+         <SSHTTP Address=":8080" Active="true"></SSHTTP>
+         <SSCapture Address=":1001" DataInputType="1" Print="true">
+                  <SSAdapter AdapterType="1" Address=":2001"></SSAdapter>
+                  <SSAdapter AdapterType="4" Address=":2002"></SSAdapter>
+         </SSCapture>
+         <SSCapture Address=":1002" DataInputType="1" Print="true"></SSCapture>
+</SSSetting>
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	SSSetting 配置信息
+		Version 文件版本
+	SSHTTP HTTP配置
+		Address:监听地址
+		Active:是否启用
+	SSCapture
+		数据采集器 AddressL采集地址  
+		DataInputType:数据采集方式 单播=1,组播=2,TCP=3,HTTP=4
+		Print:是否启用打印
+		SSAdapter:分发适配器
+			AdapterType:适配器类型  单播=1,组播=2,TCP=3,HTTP=4
+			Address:地址
+-->
+<SSSetting Version="123456">
+         <SSHTTP Address=":8080" Active="true"></SSHTTP>
+         <SSCapture Address=":1001" DataInputType="1" Print="true">
+                  <SSAdapter AdapterType="1" Address=":2001"></SSAdapter>
+                  <SSAdapter AdapterType="4" Address=":2002"></SSAdapter>
+         </SSCapture>
+         <SSCapture Address=":1002" DataInputType="1" Print="true"></SSCapture>
+</SSSetting>

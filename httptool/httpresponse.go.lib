@@ -1,0 +1,37 @@
+package httptool
+
+import (
+	"bufio"
+	"bytes"
+)
+
+type HTTPResponse struct {
+	b      *bytes.Buffer
+	rw     *bufio.Writer
+	closed bool
+}
+
+//NewHTTPRequest 创建一个新的Request
+func NewHTTPResponse(bufferSize int) (*HTTPResponse, error) {
+	//封装respinse信息
+	var res *HTTPResponse
+	res = &HTTPResponse{}
+	res.b = bytes.NewBuffer(make([]byte, 0))
+	res.rw = bufio.NewWriter(res.b)
+	return res, nil
+}
+func (res *HTTPResponse) Write(buffer []byte) {
+	res.rw.Write(buffer)
+}
+
+func (res *HTTPResponse) WriteString(s string) {
+	res.rw.WriteString(s)
+}
+func (res *HTTPResponse) Flush() {
+	res.rw.Flush()
+}
+func (res *HTTPResponse) Close() {
+	if res.closed {
+		return
+	}
+}

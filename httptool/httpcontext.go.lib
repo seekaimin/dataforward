@@ -1,0 +1,177 @@
+package httptool
+
+import (
+	"bufio"
+	"fmt"
+	"net"
+	"time"
+	mt "utils/common"
+	mset "utils/set"
+)
+
+//上下文对象
+type HTTPContext struct {
+	ID           int
+	conn         net.Conn
+	request      *HTTPRequest
+	response     *HTTPResponse
+	Error        func(error)
+	Handle       func(d []byte)
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	DataPool     *mset.Set //数据池子
+	disposed     bool
+}
+
+func (p *HTTPContext) Request() *HTTPRequest {
+	return p.request
+}
+func (p *HTTPContext) Response() *HTTPResponse {
+	return p.response
+}
+func NewContext(conn net.Conn) *HTTPContext {
+	var ctx *HTTPContext
+	ctx = &HTTPContext{}
+	ctx.conn = conn
+	ctx.DataPool = mset.New()
+	ctx.disposed = false
+	return ctx
+}
+
+func (ctx *HTTPContext) Start() {
+	reader := bufio.NewReader(ctx.conn)
+	var err error
+	ctx.request, err = NewHTTPRequest(reader)
+	if err != nil {
+		if ctx.Error != nil {
+			fmt.Println("请求发生错误", "123")
+			ctx.Error(err)
+		} else {
+			fmt.Println("请求发生错误", err)
+		}
+		return
+	}
+	//writer := bufio.NewWriter(ctx.conn)
+
+	//回数据头
+	ctx.sendHead()
+	ctx.DataPool.Init()
+	//start := time.Now()
+	for false == ctx.IsDisposed() {
+		if ctx.DataPool.Count() == 0 {
+			time.Sleep(1 * time.Millisecond)
+			continue
+		}
+		d, ok := ctx.DataPool.First().([]byte)
+		if ok {
+			//fmt.Println("data:", hex.EncodeToString(d[0:20]))
+			err = wb(ctx.conn, d)
+			if err != nil {
+				ctx.Stop()
+				continue
+			}
+		}
+		//end := time.Now()
+		//fmt.Println("发送给客户端数据长度:", len(d), "耗时:", mt.TotalMinuteSecond(start, end), hex.EncodeToString(d[0:20]))
+		//start = time.Now()
+
+	}
+
+}
+
+func (ctx *HTTPContext) AddData(d []byte) {
+	if ctx.DataPool.Count() > 100 {
+		ctx.DataPool.First()
+	}
+	ctx.DataPool.Push(d)
+}
+
+func (ctx *HTTPContext) sendHead() {
+	// HTTP/1.1 206 Partial Content
+	// Content-Type: audio/mpeg
+	// Last-Modified: Mon, 20 Jun 2016 11:14:24 GMT
+	// Accept-Ranges: bytes
+	// ETag: "cfb9c5e6e4cad11:0"
+	// Server: Microsoft-IIS/7.5
+	// X-Powered-By: ASP.NET
+	// Date: Tue, 16 Jan 2018 01:20:33 GMT
+	// Connection: close
+	// Content-Length: 10245224
+	// Content-Range: bytes 4206-10249429/10249430
+
+	//con := ctx.conn
+	// l := fmt.Sprintf("%s %s\r\n", ctx.request.Proto, "206 Content")
+	// ws(con, l)
+	// ws(con, "Content-Type: audio/mpeg\r\n")
+	// ws(con, "Server:goServer\r\n")
+	// ws(con, "Accept-Ranges: bytes\r\n")
+	// ws(con, "X-Powered-By: GOLANG\r\n")
+	// dt := mt.Format(time.Now())
+	// l = fmt.Sprintf("Last-Modified:%s\r\n", dt)
+	// ws(con, l)
+	// l = fmt.Sprintf("Content-Length:%d\r\n", 10245224)
+	// ws(con, l)
+	// ws(con, "Accept-Language: en,zh-CN\r\n")
+
+	// HTTP/1.0 200 OK
+	// Server: mscore(MultiCoreServer)
+	// Pragma: no-cache
+	con := ctx.conn
+	ws(con, "HTTP/1.0 200 OK\r\n")
+	ws(con, "Server:GoServer\r\n")
+	ws(con, "Pragma: no-cache\r\n\r\n")
+}
+func wb(c net.Conn, d []byte) error {
+	_, err := c.Write(d)
+	return err
+}
+func ws(c net.Conn, str string) error {
+	_, err := c.Write([]byte(str))
+	return err
+}
+
+func (ctx *HTTPContext) send1(writer *bufio.Writer, d []byte) error {
+
+	// HTTP/1.1 206 Partial Content
+	// Content-Type: audio/mpeg
+	// Last-Modified: Mon, 20 Jun 2016 11:14:24 GMT
+	// Accept-Ranges: bytes
+	// ETag: "cfb9c5e6e4cad11:0"
+	// Server: Microsoft-IIS/7.5
+	// X-Powered-By: ASP.NET
+	// Date: Tue, 16 Jan 2018 01:20:33 GMT
+	// Connection: close
+	// Content-Length: 10245224
+	// Content-Range: bytes 4206-10249429/10249430
+
+	l := fmt.Sprintf("%s %s\r\n", ctx.request.Proto, "206 Content")
+	_, err := writer.WriteString(l)
+	if err != nil {
+		return err
+	}
+	writer.WriteString("Content-Type: audio/mpeg\r\n")
+	writer.WriteString("Server:goServer\r\n")
+	writer.WriteString("Accept-Ranges: bytes\r\n")
+	writer.WriteString("X-Powered-By: GOLANG\r\n")
+	dt := mt.Format(time.Now())
+	l = fmt.Sprintf("Last-Modified:%s\r\n", dt)
+	writer.WriteString(l)
+	l = fmt.Sprintf("Content-Length:%d\r\n", len(d))
+	writer.WriteString(l)
+	writer.WriteString("Accept-Language: en,zh-CN\r\n")
+	writer.Write(d)
+	err = writer.Flush()
+	return err
+}
+
+func (p *HTTPContext) Stop() {
+	if p.disposed {
+		return
+	}
+	p.disposed = true
+	p.conn.Close()
+}
+
+func (p *HTTPContext) IsDisposed() bool {
+	return p.disposed
+}

@@ -1,0 +1,232 @@
+package httptool
+
+import (
+	"fmt"
+	"log"
+	"net"
+	"sync"
+	"time"
+	mt "utils/common"
+	mset "utils/set"
+)
+
+//MyHTTP ss
+type MyHTTP struct {
+	Host           string
+	running        bool
+	Handel         func([]byte) []byte
+	m              *sync.Mutex
+	l              *net.TCPListener
+	DataPool       *mset.Set
+	HTTPClientPool *mset.Set
+}
+
+func (p *MyHTTP) Lock() {
+	p.m.Lock()
+}
+func (p *MyHTTP) Unlock() {
+	p.m.Unlock()
+}
+func (p *MyHTTP) add(item *HTTPContext) {
+	defer p.Unlock()
+	p.Lock()
+	item.ID = p.HTTPClientPool.Push(item)
+
+	fmt.Println("add id:", item.ID, "pool:", p.HTTPClientPool.Count())
+
+}
+func (p *MyHTTP) remove(item *HTTPContext) {
+	defer p.Unlock()
+	p.Lock()
+	p.HTTPClientPool.Remove(item.ID)
+	fmt.Println("remove id:", item.ID, "pool:", p.HTTPClientPool.Count())
+}
+
+//Check 检核客户端数量
+func (p *MyHTTP) Check() {
+	// var unitK, unitM, unitG float64
+	// unitK = 1024.0
+	// unitM = 1024.0 * unitK
+	// unitG = 1024.0 * unitM
+	// unit := "0B"
+	// for p.running {
+	// 	if p.TotalBufferSize < unitK {
+	// 		unit = fmt.Sprintf("%.6fB", p.TotalBufferSize)
+	// 	} else if p.TotalBufferSize < unitM {
+	// 		unit = fmt.Sprintf("%.6fK", p.TotalBufferSize/unitK)
+	// 	} else if p.TotalBufferSize < unitG {
+	// 		unit = fmt.Sprintf("%.6fM", p.TotalBufferSize/unitM)
+	// 	} else {
+	// 		unit = fmt.Sprintf("%.6fG", p.TotalBufferSize/unitG)
+	// 	}
+	// 	fmt.Println("客户端数量:", p.count, "收发数据", unit)
+	// 	time.Sleep(1 * time.Second)
+	// }
+}
+
+// Start ss
+func (p *MyHTTP) Start() {
+	if p.Validate() == false {
+		return
+	}
+	fmt.Println("服务已经启动 : ", p.Host)
+	p.running = true
+	go p.startReceiveData()
+	go p.Check()
+	for p.running {
+		client, err := p.l.Accept()
+		if err != nil {
+			log.Fatal("ListenAndServe: ", err)
+		}
+		go p.doClient(client)
+	}
+}
+
+// Stop dfdf
+func (p *MyHTTP) Stop() {
+	if !p.running {
+		return
+	}
+	p.running = false
+	p.l.Close()
+	for {
+		if p.HTTPClientPool.Count() == 0 {
+			break
+		}
+		c := p.HTTPClientPool.First()
+		if c != nil {
+			ctx, ok := c.(*HTTPContext)
+			if ok {
+				p.close(ctx)
+			}
+		} else {
+			break
+		}
+	}
+}
+
+// Validate 数据验证
+func (p *MyHTTP) Validate() bool {
+	p.m = new(sync.Mutex)
+	p.HTTPClientPool = mset.New()
+	p.DataPool = mset.New()
+	addr, err := net.ResolveTCPAddr("tcp4", p.Host) //定义一个本机IP和端口。
+	if err != nil {
+		fmt.Println("监听地址错误：", p.Host, err)
+		return false
+	}
+	p.l, err = net.ListenTCP("tcp", addr) //在刚定义好的地址上进监听请求。
+	if err != nil {
+		fmt.Println("监听出错：", err)
+		return false
+	}
+	return true
+}
+
+// DoClient 处理客户端
+func (p *MyHTTP) doClient(client net.Conn) {
+	var context *HTTPContext
+	context = NewContext(client)
+	p.add(context)
+	fmt.Println("id:", context.ID)
+	defer p.close(context)
+	context.Start()
+}
+
+func (p *MyHTTP) startReceiveData() {
+	server, err := net.ResolveUDPAddr("udp", ":11110")
+	if err != nil {
+		fmt.Println("创建监听失败", err.Error())
+	}
+	//创建数据接收监听
+	conn, err := net.ListenUDP("udp", server)
+	if err != nil {
+		fmt.Println("处理监听失败 返回", err.Error())
+		return
+	}
+	//var t time.Time
+	//t.Add(1 * time.Millisecond)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	//处理连接
+	p.recvUDPMsg(conn)
+}
+
+func (p *MyHTTP) recvUDPMsg(conn *net.UDPConn) {
+	defer conn.Close()
+
+	var size int
+	var err error
+	for p.running {
+		size = -1
+		err = nil
+		//设置超时时间
+		conn.SetReadDeadline(time.Now().Add(1 * time.Millisecond))
+		var buf [2048]byte
+		//接收数据
+		size, _, err = conn.ReadFromUDP(buf[0:])
+		if err == nil && size > 0 {
+			//收到数据写入缓冲区)
+			if p.DataPool.Count() > 50 {
+				//超过1000个包   将第一个包排除
+				p.DataPool.First()
+			}
+			//fmt.Println("写数据", hex.EncodeToString(buf[0:20]))
+			p.DataPool.Push(buf[0:size])
+			continue
+		}
+		// d := p.DataPool.First()
+		// if d == nil {
+		// 	continue
+		// }
+		// t, ok := d.([]byte)
+		// if !ok {
+		// 	continue
+		// }
+		// n := len(t)
+		// if n > 20 {
+		// 	n = 20
+		// }
+		// fmt.Println("数据", hex.EncodeToString(t[0:n]))
+		//fmt.Println("未收到数据")
+		//未收到数据
+		//检查缓冲区
+		if p.DataPool.Count() == 0 {
+			//无数据
+			//time.Sleep(1 * time.Millisecond)
+			continue
+		}
+		if p.HTTPClientPool.Count() == 0 {
+			//无无客户端接入
+			//time.Sleep(1 * time.Millisecond)
+			continue
+		}
+		//fmt.Println("客户端数量:", p.HTTPClientPool.Count())
+		//把缓冲区数据写入客户端
+		start := time.Now()
+		for p.running {
+			temp := p.DataPool.First()
+			if temp == nil {
+				break
+			}
+			d, ok := temp.([]byte)
+			if !ok {
+				break
+			}
+			//fmt.Println("写数据", hex.EncodeToString(d[0:20]))
+			p.HTTPClientPool.Each(func(k int, v interface{}) {
+				tempclient, ok := v.(*HTTPContext)
+				if ok {
+					//fmt.Println("写数据到客户端")
+					tempclient.AddData(d)
+				}
+			})
+		}
+		end := time.Now()
+		fmt.Println("客户端数量:", p.HTTPClientPool.Count(), "数据通知耗时(毫秒):", mt.TotalMinuteSecond(start, end))
+	}
+}
+func (p *MyHTTP) close(ctx *HTTPContext) {
+	fmt.Println("close id ", ctx.ID)
+	defer p.remove(ctx)
+	ctx.Stop()
+}

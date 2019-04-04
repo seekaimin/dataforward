@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	Setting 配置信息
+		Version 文件版本
+	HTTP HTTP配置
+		Address:监听地址
+		Active:是否启用
+	Capture
+		数据采集器 AddressL采集地址  
+		DataInputType:数据采集方式 单播=1,组播=2,TCP=3,HTTP=4
+		Print:是否启用打印
+		Adapter:分发适配器
+			AdapterType:适配器类型  单播=1,组播=2,TCP=3,HTTP=4
+			Address:地址
+-->
+<SSSetting Address=":1111" Version="20180119">
+	<HTTP Address=":11110" ></HTTP>
+	<Capture Address=":1234" DataInputType="1" Print="false" ReceivePackageSize = "50">
+		<Adapter AdapterType="1" Address=":2002"></Adapter>
+		<Adapter AdapterType="4" Address="/1.ts"></Adapter>
+	</Capture>
+	<!--
+	<Capture Address=":1001" DataInputType="1" Print="true">
+		<Adapter AdapterType="1" Address=":2001"></Adapter>
+		<Adapter AdapterType="4" Address="/1.ts"></Adapter>
+	</Capture>
+	<Capture Address=":1002" DataInputType="1" Print="true">
+		<Adapter AdapterType="1" Address=":2002"></Adapter>
+		<Adapter AdapterType="4" Address="/2.ts"></Adapter>
+	</Capture>
+	<Capture Address=":1003" DataInputType="1" Print="true">
+		<Adapter AdapterType="1" Address=":2003"></Adapter>
+		<Adapter AdapterType="4" Address="/23.ts"></Adapter>
+	</Capture>
+	<Capture Address=":1002" DataInputType="1" Print="true">
+		<Adapter AdapterType="1" Address=":2002"></Adapter>
+		<Adapter AdapterType="4" Address="/2.ts"></Adapter>
+	</Capture>
+		<Adapter AdapterType="4" Address="1.ts"></Adapter>
+	<Capture Address=":1002" DataInputType="1" Print="true"></Capture>
+	-->
+</SSSetting>
